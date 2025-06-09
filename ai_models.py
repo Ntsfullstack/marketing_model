@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-"""
-AI Models cho Hệ thống Quản lý Khuyến mãi - SQL Server Version
-"""
 
 import pandas as pd
 import numpy as np
