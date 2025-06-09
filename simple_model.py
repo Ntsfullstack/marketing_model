@@ -1,10 +1,21 @@
+#!/usr/bin/env python3
+"""
+Hệ thống Quản lý Khuyến mãi với AI - Phiên bản SQL Server
+Sử dụng SQL Server thay vì SQLite
+"""
+
 import pandas as pd
 import numpy as np
-import mysql.connector
-from datetime import datetime
-import json
 import os
+import sys
+from datetime import datetime, timedelta
+import pyodbc
+from sqlserver_config import SQLSERVER_CONFIG
+import mysql.connector
 from ai_models import AdvancedAIModels, create_visualizations
+
+# Import AI models
+from ai_models import PromotionAnalyzer
 
 class AdvancedPromotionSystem:
     def __init__(self):

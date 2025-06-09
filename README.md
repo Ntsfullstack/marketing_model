@@ -1,23 +1,34 @@
-# 🎯 Hệ thống Quản lý Khuyến mãi với AI
+# 🎯 Hệ thống Quản lý Khuyến mãi với AI - SQL Server
 
-Hệ thống quản lý khuyến mãi thông minh với AI models để phân tích hiệu quả khuyến mãi và dự đoán doanh thu.
+Hệ thống quản lý khuyến mãi thông minh với AI models để phân tích hiệu quả khuyến mãi và dự đoán doanh thu. Sử dụng **SQL Server** làm database.
 
 ## 📁 Cấu trúc Project
 
 ```
 training_model/
-├── simple_model.py          # File chính chứa toàn bộ hệ thống
-├── ai_models.py            # Các AI models nâng cao
+├── simple_model_sqlserver.py  # File chính sử dụng SQL Server
+├── ai_models.py              # Các AI models nâng cao
+├── sqlserver_config.py       # Cấu hình SQL Server
+├── setup_sqlserver.py        # Script setup database
 ├── data/
 │   └── rich_sample_data.xlsx # Dữ liệu mẫu phong phú (173 giao dịch)
-├── promotions.db           # Database SQLite
-├── requirements.txt        # Dependencies
-└── README.md              # Hướng dẫn này
+├── requirements.txt          # Dependencies
+└── README.md                # Hướng dẫn này
 ```
 
 ## 🚀 Cài đặt & Chạy
 
-### 1. Tạo môi trường ảo
+### 1. Yêu cầu hệ thống
+- **SQL Server** (Express, Developer, hoặc Enterprise)
+- **ODBC Driver** cho SQL Server
+- **Python 3.8+**
+
+### 2. Cài đặt ODBC Driver
+- **Windows**: Tải từ Microsoft
+- **macOS**: `brew install microsoft/mssql-release/msodbcsql18`
+- **Linux**: Theo hướng dẫn Microsoft
+
+### 3. Tạo môi trường ảo
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # macOS/Linux
@@ -25,14 +36,34 @@ source .venv/bin/activate  # macOS/Linux
 .venv\Scripts\activate     # Windows
 ```
 
-### 2. Cài đặt dependencies
+### 4. Cài đặt dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Chạy hệ thống
+### 5. Cấu hình SQL Server
+Chỉnh sửa `sqlserver_config.py`:
+```python
+SQLSERVER_CONFIG = {
+    'driver': 'ODBC Driver 17 for SQL Server',  # hoặc 18
+    'server': 'localhost',
+    'port': 1433,
+    'database': 'promotions_db',
+    'trusted_connection': 'yes',  # Windows Authentication
+    # Hoặc SQL Authentication:
+    # 'uid': 'sa',
+    # 'pwd': 'your_password',
+}
+```
+
+### 6. Setup Database
 ```bash
-python simple_model.py
+python setup_sqlserver.py
+```
+
+### 7. Chạy hệ thống
+```bash
+python simple_model_sqlserver.py
 ```
 
 ## 🎯 Tính năng chính
@@ -42,6 +73,7 @@ python simple_model.py
 - **Promotions**: Quản lý khuyến mãi (10 items) 
 - **Sales**: Theo dõi giao dịch (173 records)
 - **Import/Export Excel**: Đọc/ghi dữ liệu từ Excel
+- **SQL Server Database**: Lưu trữ dữ liệu an toàn, scalable
 
 ### 🤖 AI Models
 - **Revenue Prediction**: Dự đoán doanh thu dựa trên sản phẩm, khuyến mãi
@@ -183,10 +215,24 @@ Hệ thống sử dụng dữ liệu phong phú với:
 4. **Price Optimization** - Tối ưu giá
 5. **Back to Main Menu**
 
+## 🔧 Troubleshooting
+
+### Lỗi kết nối SQL Server:
+1. Kiểm tra SQL Server đang chạy
+2. Kiểm tra connection string trong `sqlserver_config.py`
+3. Đảm bảo đã cài ODBC Driver
+4. Kiểm tra quyền truy cập database
+
+### Lỗi ODBC Driver:
+- Windows: Tải từ Microsoft
+- macOS: `brew install microsoft/mssql-release/msodbcsql18`
+- Linux: Theo hướng dẫn Microsoft
+
 ## 💡 Lưu ý
 
-- Database SQLite được tạo tự động
+- SQL Server database được tạo tự động qua `setup_sqlserver.py`
 - Dữ liệu được load từ `data/rich_sample_data.xlsx`
 - AI models cần ít nhất 10 records để train
 - Time series cần ít nhất 10 ngày dữ liệu
 - Models được train lại mỗi lần chạy để cập nhật với dữ liệu mới
+- Hỗ trợ cả Windows Authentication và SQL Authentication
