@@ -13,7 +13,7 @@ import pyodbc
 from sqlserver_config import SQLSERVER_CONFIG
 
 # Import AI models
-from ai_models import AdvancedAIModels, create_visualizations
+from ai_models import PromotionAnalyzer
 
 class AdvancedPromotionSystem:
     def __init__(self):
@@ -22,7 +22,7 @@ class AdvancedPromotionSystem:
         self.config = SQLSERVER_CONFIG
         print(f"📝 Cấu hình database: {self.config}")
         self.data_folder = "data"
-        self.ai_models = AdvancedAIModels()
+        self.ai_models = PromotionAnalyzer()
         try:
             print("🔄 Khởi tạo database...")
             self.init_database()
@@ -294,11 +294,7 @@ class AdvancedPromotionSystem:
         """Train các mô hình AI"""
         try:
             products_df, promotions_df, sales_df = self.get_data()
-            self.ai_models.train_all_models(products_df, promotions_df, sales_df)
-            
-            # Tạo biểu đồ phân tích
-            sales_merged = self.ai_models.prepare_data(products_df, promotions_df, sales_df)
-            create_visualizations(sales_merged)
+            self.ai_models.train_models(products_df, promotions_df, sales_df)
             
         except Exception as e:
             print(f"⚠️ Lỗi khi train AI models: {e}")
@@ -333,25 +329,20 @@ class AdvancedPromotionSystem:
         product = products_df[products_df['id'] == promotion['product_id']].iloc[0]
         
         # Dự đoán thành công khuyến mãi
-        success_prob = self.ai_models.predict_promotion_success(
+        success_prob = self._predict_promotion_success(
             price=product['price'],
             quantity=2,  # Giả sử quantity trung bình
             discount=promotion['discount'],
-            category=product['category'],
-            month=datetime.now().month,
-            quarter=datetime.now().month // 3 + 1
+            category=product['category']
         )
         
         # Dự đoán doanh thu với khuyến mãi
-        predicted_revenue = self.ai_models.predict_revenue(
-            product_id=0,  # Không sử dụng product_id
+        predicted_revenue = self._predict_revenue(
+            price=product['price'],
             quantity=2,
             has_promotion=1,
             discount=promotion['discount'],
-            category=product['category'],
-            month=datetime.now().month,
-            day_of_week=datetime.now().weekday(),
-            quarter=datetime.now().month // 3 + 1
+            category=product['category']
         )
         
         # Kết hợp kết quả
@@ -367,6 +358,52 @@ class AdvancedPromotionSystem:
         })
         
         return advanced_analysis
+    
+    def _predict_promotion_success(self, price, quantity, discount, category):
+        """Dự đoán xác suất thành công khuyến mãi"""
+        if 'promotion_success' not in self.ai_models.models:
+            return None
+        
+        try:
+            # Encode category
+            if 'category' in self.ai_models.label_encoders:
+                category_encoded = self.ai_models.label_encoders['category'].transform([category])[0]
+            else:
+                category_encoded = 0
+            
+            # Prepare features
+            discount_amount = price * discount / 100
+            features = np.array([[discount_amount, price, category_encoded, quantity]])
+            
+            # Predict success probability
+            if hasattr(self.ai_models.models['promotion_success'], 'predict_proba'):
+                proba = self.ai_models.models['promotion_success'].predict_proba(features)[0]
+                return proba[1]  # Probability of success
+            else:
+                return 0.5  # Default if no predict_proba
+        except:
+            return None
+    
+    def _predict_revenue(self, price, quantity, has_promotion, discount, category):
+        """Dự đoán doanh thu"""
+        if 'revenue_prediction' not in self.ai_models.models:
+            return None
+        
+        try:
+            # Encode category
+            if 'category' in self.ai_models.label_encoders:
+                category_encoded = self.ai_models.label_encoders['category'].transform([category])[0]
+            else:
+                category_encoded = 0
+            
+            # Prepare features
+            discount_amount = price * discount / 100
+            features = np.array([[price, discount_amount, quantity, category_encoded, has_promotion]])
+            
+            # Predict
+            return self.ai_models.models['revenue_prediction'].predict(features)[0]
+        except:
+            return None
     
     def analyze_promotion_basic(self, promotion_id):
         """Phân tích hiệu quả khuyến mãi cơ bản"""
@@ -440,39 +477,30 @@ class AdvancedPromotionSystem:
         product = products_df[products_df['id'] == product_id].iloc[0]
         
         # Dự đoán doanh thu với giá hiện tại
-        current_revenue = self.ai_models.predict_revenue(
-            product_id=0,  # Không sử dụng product_id
+        current_revenue = self._predict_revenue(
+            price=product['price'],
             quantity=2,
             has_promotion=0,
             discount=0,
-            category=product['category'],
-            month=datetime.now().month,
-            day_of_week=datetime.now().weekday(),
-            quarter=datetime.now().month // 3 + 1
+            category=product['category']
         )
         
         # Dự đoán doanh thu với giá tăng 10%
-        higher_price_revenue = self.ai_models.predict_revenue(
-            product_id=0,  # Không sử dụng product_id
+        higher_price_revenue = self._predict_revenue(
+            price=product['price'] * 1.1,
             quantity=2,
             has_promotion=0,
             discount=0,
-            category=product['category'],
-            month=datetime.now().month,
-            day_of_week=datetime.now().weekday(),
-            quarter=datetime.now().month // 3 + 1
+            category=product['category']
         )
         
         # Dự đoán doanh thu với giá giảm 10%
-        lower_price_revenue = self.ai_models.predict_revenue(
-            product_id=0,  # Không sử dụng product_id
+        lower_price_revenue = self._predict_revenue(
+            price=product['price'] * 0.9,
             quantity=2,
             has_promotion=0,
             discount=0,
-            category=product['category'],
-            month=datetime.now().month,
-            day_of_week=datetime.now().weekday(),
-            quarter=datetime.now().month // 3 + 1
+            category=product['category']
         )
         
         # Kết hợp kết quả
@@ -546,24 +574,68 @@ class AdvancedPromotionSystem:
     
     def forecast_future_revenue(self, days=30):
         """Dự đoán doanh thu tương lai"""
-        if not self.ai_models.is_trained:
+        if not self.ai_models.is_trained or 'time_series' not in self.ai_models.models:
             return {"error": "AI models chưa được train"}
         
-        forecast = self.ai_models.forecast_revenue(days)
-        
-        if forecast is None:
-            return {"error": "Không thể dự đoán doanh thu"}
-        
-        return {
-            "forecast_days": days,
-            "forecast_values": forecast.tolist(),
-            "average_forecast": forecast.mean(),
-            "trend": "Tăng" if forecast[-1] > forecast[0] else "Giảm"
-        }
+        try:
+            model = self.ai_models.models['time_series']
+            
+            if hasattr(model, 'forecast'):
+                # ARIMA model
+                forecast = model.forecast(steps=days)
+            elif hasattr(model, 'predict'):
+                # Exponential Smoothing
+                forecast = model.predict(start=len(model.fittedvalues), end=len(model.fittedvalues) + days - 1)
+            else:
+                return {"error": "Không thể dự đoán doanh thu"}
+            
+            return {
+                "forecast_days": days,
+                "forecast_values": forecast.tolist(),
+                "average_forecast": forecast.mean(),
+                "trend": "Tăng" if forecast[-1] > forecast[0] else "Giảm"
+            }
+        except Exception as e:
+            return {"error": f"Lỗi dự đoán: {str(e)}"}
     
     def get_ai_model_status(self):
         """Lấy trạng thái các mô hình AI"""
-        return self.ai_models.get_model_performance()
+        status = {}
+        
+        if self.ai_models.is_trained:
+            for model_name, model in self.ai_models.models.items():
+                if model_name == 'revenue_prediction':
+                    status[model_name] = {
+                        'type': 'Regression',
+                        'algorithm': type(model).__name__,
+                        'status': 'Trained'
+                    }
+                elif model_name == 'promotion_success':
+                    status[model_name] = {
+                        'type': 'Classification',
+                        'algorithm': type(model).__name__,
+                        'status': 'Trained'
+                    }
+                elif model_name == 'time_series':
+                    status[model_name] = {
+                        'type': 'Time Series',
+                        'algorithm': type(model).__name__,
+                        'status': 'Trained'
+                    }
+                elif model_name == 'price_optimization':
+                    status[model_name] = {
+                        'type': 'Optimization',
+                        'algorithm': type(model).__name__,
+                        'status': 'Trained'
+                    }
+        else:
+            status['overall'] = {
+                'type': 'System',
+                'algorithm': 'N/A',
+                'status': 'Not Trained'
+            }
+        
+        return status
     
     def _generate_ai_recommendations(self, roi, success_prob, predicted_revenue):
         """Tạo khuyến nghị dựa trên AI"""
@@ -638,6 +710,31 @@ class AdvancedPromotionSystem:
         conn.close()
         
         return {"message": "Giao dịch đã được thêm"}
+    
+    def ai_analysis(self):
+        """Phân tích AI trực tiếp"""
+        while True:
+            print("\n🤖 AI ANALYSIS")
+            print("1. Revenue Prediction")
+            print("2. Promotion Success Analysis")
+            print("3. Time Series Forecasting")
+            print("4. Price Optimization")
+            print("5. Back to Main Menu")
+            
+            choice = input("Chọn phân tích (1-5): ")
+            
+            if choice == "1":
+                self.ai_models.revenue_prediction()
+            elif choice == "2":
+                self.ai_models.promotion_success_analysis()
+            elif choice == "3":
+                self.ai_models.time_series_forecasting()
+            elif choice == "4":
+                self.ai_models.price_optimization()
+            elif choice == "5":
+                break
+            else:
+                print("❌ Lựa chọn không hợp lệ")
 
 def main():
     """Hàm chính để chạy hệ thống"""
@@ -656,9 +753,10 @@ def main():
         print("5. Thêm giao dịch")
         print("6. Xem dữ liệu")
         print("7. Trạng thái AI Models")
+        print("8. Phân tích AI trực tiếp")
         print("0. Thoát")
         
-        choice = input("\nChọn chức năng (0-7): ")
+        choice = input("\nChọn chức năng (0-8): ")
         
         if choice == "0":
             print("👋 Tạm biệt!")
@@ -750,6 +848,9 @@ def main():
             status = system.get_ai_model_status()
             for model_name, info in status.items():
                 print(f"   {model_name}: {info['type']} - {info['algorithm']} - {info['status']}")
+        
+        elif choice == "8":
+            system.ai_analysis()
         
         else:
             print("❌ Lựa chọn không hợp lệ!")
