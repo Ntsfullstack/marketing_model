@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import sqlite3
+import mysql.connector
 from datetime import datetime
 import json
 import os
@@ -9,57 +9,98 @@ from ai_models import AdvancedAIModels, create_visualizations
 class AdvancedPromotionSystem:
     def __init__(self):
         """Khởi tạo hệ thống nâng cao"""
-        self.db_path = "promotions.db"
+        print("🚀 Khởi tạo hệ thống...")
+        self.db_config = {
+            'host': '127.0.0.1',
+            'user': 'root',
+            'password': '',  # Mặc định XAMPP không có password
+            'database': 'marketing_model',
+            'port': 3306,
+            'connect_timeout': 10
+        }
+        print(f"📝 Cấu hình database: {self.db_config}")
         self.data_folder = "data"
         self.ai_models = AdvancedAIModels()
-        self.init_database()
-        self.load_data_from_excel()
-        self.train_ai_models()
+        try:
+            print("🔄 Khởi tạo database...")
+            self.init_database()
+            print("🔄 Load dữ liệu từ Excel...")
+            self.load_data_from_excel()
+            print("🔄 Train AI models...")
+            self.train_ai_models()
+        except Exception as e:
+            print(f"❌ Lỗi: {str(e)}")
+            raise e
     
     def init_database(self):
-        """Tạo database SQLite đơn giản"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Tạo bảng Products
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                price REAL NOT NULL,
-                category TEXT
+        """Tạo database MySQL"""
+        print("📡 Kết nối đến MySQL server...")
+        # Kết nối tới MySQL server
+        try:
+            conn = mysql.connector.connect(
+                host=self.db_config['host'],
+                user=self.db_config['user'],
+                password=self.db_config['password'],
+                port=self.db_config['port'],
+                connect_timeout=self.db_config['connect_timeout']
             )
-        ''')
-        
-        # Tạo bảng Promotions
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS promotions (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                discount REAL NOT NULL,
-                product_id INTEGER,
-                active BOOLEAN DEFAULT 1,
-                FOREIGN KEY (product_id) REFERENCES products (id)
-            )
-        ''')
-        
-        # Tạo bảng Sales
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS sales (
-                id INTEGER PRIMARY KEY,
-                product_id INTEGER,
-                promotion_id INTEGER,
-                quantity INTEGER,
-                revenue REAL,
-                date TEXT,
-                FOREIGN KEY (product_id) REFERENCES products (id),
-                FOREIGN KEY (promotion_id) REFERENCES promotions (id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        print("✅ Database đã được tạo!")
+            print("✅ Kết nối thành công!")
+            cursor = conn.cursor()
+            
+            # Tạo database nếu chưa tồn tại
+            print("📦 Tạo database...")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {self.db_config['database']}")
+            cursor.execute(f"USE {self.db_config['database']}")
+            
+            # Tạo bảng Products
+            print("📊 Tạo bảng Products...")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS products (
+                    id INT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    price DECIMAL(10,2) NOT NULL,
+                    category VARCHAR(100)
+                )
+            ''')
+            
+            # Tạo bảng Promotions
+            print("📊 Tạo bảng Promotions...")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS promotions (
+                    id INT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    discount DECIMAL(5,2) NOT NULL,
+                    product_id INT,
+                    active BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (product_id) REFERENCES products (id)
+                )
+            ''')
+            
+            # Tạo bảng Sales
+            print("📊 Tạo bảng Sales...")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sales (
+                    id INT PRIMARY KEY,
+                    product_id INT,
+                    promotion_id INT,
+                    quantity INT,
+                    revenue DECIMAL(10,2),
+                    date DATE,
+                    FOREIGN KEY (product_id) REFERENCES products (id),
+                    FOREIGN KEY (promotion_id) REFERENCES promotions (id)
+                )
+            ''')
+            
+            conn.commit()
+            conn.close()
+            print("✅ Database đã được tạo!")
+        except Exception as e:
+            print(f"❌ Lỗi kết nối database: {str(e)}")
+            raise e
+    
+    def get_db_connection(self):
+        """Tạo kết nối đến database"""
+        return mysql.connector.connect(**self.db_config)
     
     def load_data_from_excel(self):
         """Load dữ liệu từ file Excel"""
@@ -88,12 +129,13 @@ class AdvancedPromotionSystem:
             sales_df = pd.read_excel(excel_file, sheet_name='Sales')
             
             # Xóa dữ liệu cũ và thêm dữ liệu mới
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             
             # Xóa dữ liệu cũ
-            conn.execute("DELETE FROM sales")
-            conn.execute("DELETE FROM promotions")
-            conn.execute("DELETE FROM products")
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM sales")
+            cursor.execute("DELETE FROM promotions")
+            cursor.execute("DELETE FROM products")
             
             # Thêm dữ liệu Products
             products_df.to_sql('products', conn, if_exists='append', index=False)
@@ -167,7 +209,7 @@ class AdvancedPromotionSystem:
     
     def load_sample_data(self):
         """Load dữ liệu mẫu (fallback)"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         # Kiểm tra xem đã có dữ liệu chưa
@@ -181,7 +223,7 @@ class AdvancedPromotionSystem:
                 (4, "Shoes", 120, "Fashion"),
                 (5, "T-shirt", 25, "Fashion"),
             ]
-            cursor.executemany("INSERT INTO products VALUES (?, ?, ?, ?)", products)
+            cursor.executemany("INSERT INTO products VALUES (%s, %s, %s, %s)", products)
     
             promotions = [
                 (1, "Giảm giá mùa hè", 20, 1, 1),
@@ -189,7 +231,7 @@ class AdvancedPromotionSystem:
                 (3, "Mua 2 tặng 1", 33, 3, 0),
                 (4, "Giảm giá Fashion", 25, 4, 1),
             ]
-            cursor.executemany("INSERT INTO promotions VALUES (?, ?, ?, ?, ?)", promotions)
+            cursor.executemany("INSERT INTO promotions VALUES (%s, %s, %s, %s, %s)", promotions)
             
             # Thêm giao dịch
             sales = [
@@ -200,7 +242,7 @@ class AdvancedPromotionSystem:
                 (5, 4, 4, 2, 180, "2024-01-05"),
                 (6, 5, None, 5, 125, "2024-01-06"),
             ]
-            cursor.executemany("INSERT INTO sales VALUES (?, ?, ?, ?, ?, ?)", sales)
+            cursor.executemany("INSERT INTO sales VALUES (%s, %s, %s, %s, %s, %s)", sales)
             
             conn.commit()
             print("✅ Dữ liệu mẫu đã được tạo!")
@@ -222,7 +264,7 @@ class AdvancedPromotionSystem:
     
     def get_data(self):
         """Lấy tất cả dữ liệu"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         
         products_df = pd.read_sql_query("SELECT * FROM products", conn)
         promotions_df = pd.read_sql_query("SELECT * FROM promotions", conn)
@@ -287,36 +329,31 @@ class AdvancedPromotionSystem:
     
     def analyze_promotion_basic(self, promotion_id):
         """Phân tích hiệu quả khuyến mãi cơ bản"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         
         # Lấy thông tin khuyến mãi
-        promotion = pd.read_sql_query(
-            "SELECT * FROM promotions WHERE id = ?", 
-            conn, params=[promotion_id]
-        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM promotions WHERE id = %s", (promotion_id,))
+        promotion = cursor.fetchone()
         
-        if promotion.empty:
+        if promotion is None:
             conn.close()
             return {"error": "Khuyến mãi không tồn tại"}
         
         # Lấy dữ liệu sales
-        sales_with_promo = pd.read_sql_query(
-            "SELECT * FROM sales WHERE promotion_id = ?", 
-            conn, params=[promotion_id]
-        )
+        cursor.execute("SELECT * FROM sales WHERE promotion_id = %s", (promotion_id,))
+        sales_with_promo = cursor.fetchall()
         
-        sales_without_promo = pd.read_sql_query(
-            "SELECT * FROM sales WHERE promotion_id IS NULL", 
-            conn
-        )
+        cursor.execute("SELECT * FROM sales WHERE promotion_id IS NULL")
+        sales_without_promo = cursor.fetchall()
         
         conn.close()
         
         # Tính toán metrics
-        total_revenue_with_promo = sales_with_promo['revenue'].sum()
-        total_revenue_without_promo = sales_without_promo['revenue'].sum()
+        total_revenue_with_promo = sum(sale[5] for sale in sales_with_promo)
+        total_revenue_without_promo = sum(sale[5] for sale in sales_without_promo)
         
-        discount_percent = promotion.iloc[0]['discount']
+        discount_percent = promotion[3]
         discount_amount = total_revenue_with_promo * (discount_percent / 100)
         
         # Tính ROI
@@ -335,7 +372,7 @@ class AdvancedPromotionSystem:
         
         return {
             "promotion_id": promotion_id,
-            "promotion_name": promotion.iloc[0]['name'],
+            "promotion_name": promotion[1],
             "discount_percent": discount_percent,
             "total_revenue": total_revenue_with_promo,
             "discount_amount": discount_amount,
@@ -412,39 +449,36 @@ class AdvancedPromotionSystem:
     
     def optimize_price_basic(self, product_id):
         """Tối ưu hóa giá sản phẩm cơ bản"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         
         # Lấy thông tin sản phẩm
-        product = pd.read_sql_query(
-            "SELECT * FROM products WHERE id = ?", 
-            conn, params=[product_id]
-        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+        product = cursor.fetchone()
         
-        if product.empty:
+        if product is None:
             conn.close()
             return {"error": "Sản phẩm không tồn tại"}
         
         # Lấy dữ liệu sales
-        sales = pd.read_sql_query(
-            "SELECT * FROM sales WHERE product_id = ?", 
-            conn, params=[product_id]
-        )
+        cursor.execute("SELECT * FROM sales WHERE product_id = %s", (product_id,))
+        sales = cursor.fetchall()
         
         conn.close()
         
-        current_price = product.iloc[0]['price']
+        current_price = product[2]
         
-        if sales.empty:
+        if not sales:
             return {
                 "product_id": product_id,
-                "product_name": product.iloc[0]['name'],
+                "product_name": product[1],
                 "current_price": current_price,
                 "message": "Chưa có dữ liệu bán hàng để phân tích"
             }
         
         # Phân tích đơn giản
-        avg_revenue = sales['revenue'].mean()
-        avg_quantity = sales['quantity'].mean()
+        avg_revenue = sum(sale[5] for sale in sales) / len(sales)
+        avg_quantity = sum(sale[3] for sale in sales) / len(sales)
         
         # Tính giá tối ưu (tăng 10% nếu doanh thu cao)
         if avg_revenue > current_price * 0.8:
@@ -456,7 +490,7 @@ class AdvancedPromotionSystem:
         
         return {
             "product_id": product_id,
-            "product_name": product.iloc[0]['name'],
+            "product_name": product[1],
             "current_price": current_price,
             "optimal_price": optimal_price,
             "strategy": strategy,
@@ -527,16 +561,11 @@ class AdvancedPromotionSystem:
         """Dashboard tổng quan"""
         products_df, promotions_df, sales_df = self.get_data()
         
-        total_revenue = sales_df['revenue'].sum()
+        total_revenue = sum(sale[5] for sale in sales_df)
         active_promotions = len(promotions_df[promotions_df['active'] == 1])
         
         # Tính ROI trung bình
-        roi_values = []
-        for promo_id in promotions_df[promotions_df['active'] == 1]['id']:
-            analysis = self.analyze_promotion_basic(promo_id)
-            if 'roi' in analysis:
-                roi_values.append(analysis['roi'])
-        
+        roi_values = [self.analyze_promotion_basic(promo[0])['roi'] for promo in promotions_df[promotions_df['active'] == 1].values]
         avg_roi = np.mean(roi_values) if roi_values else 0
         
         # Thêm thông tin AI
@@ -555,7 +584,7 @@ class AdvancedPromotionSystem:
     
     def add_sale(self, product_id, promotion_id=None, quantity=1, revenue=0):
         """Thêm giao dịch mới"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         # Lấy ID tiếp theo
@@ -565,7 +594,7 @@ class AdvancedPromotionSystem:
         
         # Thêm giao dịch
         cursor.execute(
-            "INSERT INTO sales (id, product_id, promotion_id, quantity, revenue, date) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sales (id, product_id, promotion_id, quantity, revenue, date) VALUES (%s, %s, %s, %s, %s, %s)",
             (new_id, product_id, promotion_id, quantity, revenue, datetime.now().strftime("%Y-%m-%d"))
         )
         
